@@ -2475,7 +2475,7 @@ body.dragging-now { cursor: grabbing; user-select: none; -webkit-user-select: no
 /* ============ the four tabs ============
    Day One's progress keys, made clickable. A tab is a way back to work still
    owed: the one in hand is lifted, finished ones go green and stop taking
-   clicks, and the rest stay readable so the shape of the forty is visible from
+   clicks, and the rest stay readable so the shape of the thirty is visible from
    the first problem. */
 .chip {
     font-family: inherit;
@@ -2525,12 +2525,12 @@ body.oncard .where { display: none; }
         <div class="where" id="where"></div>
     </div>
     <div class="bar-right">
-        <span class="counter" id="counter">Problem 1 of 40</span>
+        <span class="counter" id="counter">Problem 1 of 30</span>
         <div class="chips" id="chips">
-            <button class="chip" type="button" id="tab-sec-pow"><span class="label">Power of a power</span><span class="tally">0/10</span></button>
-            <button class="chip" type="button" id="tab-sec-quo"><span class="label">Power of a quotient</span><span class="tally">0/10</span></button>
-            <button class="chip" type="button" id="tab-sec-same"><span class="label">Same exponent</span><span class="tally">0/10</span></button>
-            <button class="chip" type="button" id="tab-sec-rev"><span class="label">Day One review</span><span class="tally">0/10</span></button>
+            <button class="chip" type="button" id="tab-sec-pow"><span class="label">Power of a power</span><span class="tally">0/8</span></button>
+            <button class="chip" type="button" id="tab-sec-quo"><span class="label">Power of a quotient</span><span class="tally">0/8</span></button>
+            <button class="chip" type="button" id="tab-sec-same"><span class="label">Same exponent</span><span class="tally">0/7</span></button>
+            <button class="chip" type="button" id="tab-sec-rev"><span class="label">Day One review</span><span class="tally">0/7</span></button>
         </div>
         <button class="turn-in" id="turnInBtn" title="turn in what you have so far">turn in</button>
     </div>
@@ -2944,7 +2944,7 @@ function createPowerDrill(root, opts) {
         return 'M ' + x1 + ' ' + y1 + ' Q ' + cx + ' ' + cy + ' ' + x2 + ' ' + y2;
     }
 
-    function drawArrow(targetKey, lane, animate) {
+    function drawArrow(targetKey, lane, animate, faded) {
         var host = arrowSvg.parentElement;
         var from = tgt(targetKey);
         var to = tgt('out');
@@ -2956,6 +2956,7 @@ function createPowerDrill(root, opts) {
             'stroke-width': '4', 'stroke-linecap': 'round',
             'data-target': targetKey, 'data-lane': lane
         });
+        if (faded) path.setAttribute('stroke-opacity', '0.22');
         arrowSvg.appendChild(path);
 
         if (!animate) return 0;
@@ -2967,16 +2968,31 @@ function createPowerDrill(root, opts) {
         return 650;
     }
 
-    function redrawAllArrows() {
-        var drawn = Array.prototype.slice.call(arrowSvg.querySelectorAll('path[data-target]'))
-            .map(function (p) { return [p.dataset.target, Number(p.dataset.lane)]; });
+    /* The loops are part of the problem: every exponent inside is tied to the
+       outer exponent from the moment the problem appears. While a step is on
+       one factor, its loop stays bright and the others fade with their factors. */
+    var activeLoop = null;
+
+    function paintLoops(active) {
+        activeLoop = (active === undefined) ? null : active;
         clearArrows();
-        drawn.forEach(function (pair) { drawArrow(pair[0], pair[1], false); });
+        if (!steps.length || !isVisible()) return;
+        steps.forEach(function (s) {
+            var faded = activeLoop !== null && String(s.factorIndex) !== String(activeLoop);
+            drawArrow(s.factorIndex, 0, false, faded);
+        });
     }
 
-    window.addEventListener('resize', function () {
-        if (isVisible() && (phase === 'shortcut' || phase === 'done')) redrawAllArrows();
-    });
+    function repaintLoops() { if (isVisible() && steps.length) paintLoops(activeLoop); }
+
+    window.addEventListener('resize', repaintLoops);
+    // The step box below grows and shrinks, and the answer joins the row at
+    // the end; both move the expression, so the loops follow it.
+    if (window.ResizeObserver) {
+        var loopWatcher = new ResizeObserver(repaintLoops);
+        loopWatcher.observe(exprRow);
+        loopWatcher.observe(arrowSvg.parentElement);
+    }
 
     /* ---------------- Phases ---------------- */
 
@@ -2985,6 +3001,7 @@ function createPowerDrill(root, opts) {
         setCue(null);
         stepCountEl.textContent = '';
         stepTitleEl.textContent = 'Here is the problem.';
+        requestAnimationFrame(function () { paintLoops(null); });
         stepLineEl.innerHTML = '<span style="color:#718096; font-size:0.7em;">Getting ready&hellip;</span>';
         later(startSteps, 1700);
     }
@@ -3011,6 +3028,7 @@ function createPowerDrill(root, opts) {
         actionsEl.style.visibility = 'hidden';
 
         setCue(step.factorIndex);
+        paintLoops(step.factorIndex);
         focusInput();
     }
 
@@ -3036,9 +3054,9 @@ function createPowerDrill(root, opts) {
         phase = 'shortcut';
         clearTimers();
         setCue(null);
-        clearArrows();
 
         stepCountEl.textContent = 'The shortcut';
+        paintLoops(null);
         feedback.textContent = '';
         feedback.className = 'feedback';
         hintEl.textContent = '';
@@ -3064,8 +3082,8 @@ function createPowerDrill(root, opts) {
         setCue(step.factorIndex);
         stepLineEl.innerHTML = step.arrowLine;
 
-        clearArrows();
-        var dur = drawArrow(step.factorIndex, 0, true);
+        paintLoops(step.factorIndex);
+        var dur = 650;
         later(function () {
             var part = ansPart(step.factorIndex);
             if (part) part.classList.add('shown');
@@ -3081,8 +3099,7 @@ function createPowerDrill(root, opts) {
             var part = ansPart(s.factorIndex);
             if (part) part.classList.add('shown');
         });
-        var last = steps[steps.length - 1];
-        drawArrow(last.factorIndex, 0, false);
+        paintLoops(null);
         stepLineEl.innerHTML = steps.map(function (s) { return s.arrowLine; })
             .join('<span style="color:#a0aec0; padding:0 6px;">|</span>');
         finishShortcut();
@@ -3091,6 +3108,7 @@ function createPowerDrill(root, opts) {
     function finishShortcut() {
         phase = 'done';
         setCue(null);
+        paintLoops(null);
         feedback.textContent = 'Problem complete!';
         feedback.className = 'feedback correct';
         actionsEl.style.visibility = 'visible';
@@ -3122,7 +3140,7 @@ function createPowerDrill(root, opts) {
             if (reveal) {
                 revealEl.innerHTML = reveal;
                 revealEl.classList.add('showing');
-                later(advanceFromStep, 3200);   // Enter skips ahead
+                later(advanceFromStep, 1600);   // Enter skips ahead
             } else {
                 later(advanceFromStep, 850);
             }
@@ -6937,17 +6955,18 @@ var POW = (function () {
     return { createPowerDrill: createPowerDrill };
 })();
 /* =====================================================================
-   Day Two: four tabs, ten problems each, forty in all.
+   Day Two: four tabs, thirty problems in all - 8, 8, 7 and 7.
 
    Each tab is one of the existing drills, handed the same two hooks Day One
    used - number() for the problem heading and onNext() for what happens when
    a problem is finished. Nothing about how a problem is asked or marked has
    changed; the shell only decides which drill is on screen and counts.
 
-   A tab that has two sections splits its ten five and five, so the first half
-   is numbers and the second half brings the letters in. The review tab rotates
-   through all five Day One drills, two problems each, because shuffled is the
-   only way the rule has to be chosen rather than repeated.
+   A tab that has two sections splits its eight four and four, so the first
+   half is numbers and the second half brings the letters in. The review tab
+   rotates through all five Day One drills (one each, with a second from each
+   step-by-step drill, seven in all), because shuffled is the only way the rule
+   has to be chosen rather than repeated.
 
    Change a count here and the totals, the tabs and the form all follow.
    ===================================================================== */
@@ -6956,25 +6975,25 @@ var SECTIONS = [
     {
         id: 'sec-pow', label: 'Power of a power', tag: 'PowPow',
         parts: [
-            { root: 'pp-num', count: 5, note: 'numbers',
+            { root: 'pp-num', count: 4, note: 'numbers',
               make: function (root, opts) { opts.mode = 'numbers'; return PP.createPowerDrill(root, opts); } },
-            { root: 'pp-mix', count: 5, note: 'numbers and letters',
+            { root: 'pp-mix', count: 4, note: 'numbers and letters',
               make: function (root, opts) { opts.mode = 'mixed'; return PP.createPowerDrill(root, opts); } }
         ]
     },
     {
         id: 'sec-quo', label: 'Power of a quotient', tag: 'PowQuot',
         parts: [
-            { root: 'pq-num', count: 5, note: 'numbers',
+            { root: 'pq-num', count: 4, note: 'numbers',
               make: function (root, opts) { opts.mode = 'numbers'; return PQ.createQuotientDrill(root, opts); } },
-            { root: 'pq-mix', count: 5, note: 'numbers and letters',
+            { root: 'pq-mix', count: 4, note: 'numbers and letters',
               make: function (root, opts) { opts.mode = 'mixed'; return PQ.createQuotientDrill(root, opts); } }
         ]
     },
     {
         id: 'sec-same', label: 'Same exponent, different bases', tag: 'SameExp',
         parts: [
-            { root: 'se-only', count: 10, note: '',
+            { root: 'se-only', count: 7, note: '',
               make: function (root, opts) { return SE.createSameExponentDrill(root, opts); } }
         ]
     },
@@ -6987,7 +7006,7 @@ var SECTIONS = [
                answer rather than of a rule. The dividing step drill also opens
                Day One with the four worksheet problems, in order, so the
                review skips past them into the random pool. */
-            { root: 'mul-a', count: 2, note: 'multiplying',
+            { root: 'mul-a', count: 1, note: 'multiplying',
               make: function (root, opts) {
                   opts.bases = [2, 5, 8, 9, 10, 11, 12];
                   opts.expMin = -4; opts.expMax = 4;
@@ -6998,7 +7017,7 @@ var SECTIONS = [
                   opts.includeNumeric = false;   // the numeric ones are their own part
                   return MUL.createStepDrill(root, opts);
               } },
-            { root: 'div-a', count: 2, note: 'dividing',
+            { root: 'div-a', count: 1, note: 'dividing',
               make: function (root, opts) {
                   opts.bases = [2, 6, 8, 9, 10, 12];
                   return DIV.createNumberDrill(root, opts);
@@ -7008,7 +7027,7 @@ var SECTIONS = [
                   opts.skipFeatured = true;
                   return DIV.createStepDrill(root, opts);
               } },
-            { root: 'pow-a', count: 2, note: 'powers of zero and one',
+            { root: 'pow-a', count: 1, note: 'powers of zero and one',
               make: function (root, opts) { return POW.createPowerDrill(root, opts); } }
         ]
     }
